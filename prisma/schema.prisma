@@ -1,0 +1,215 @@
+// Prisma Schema for MediCita Backend
+// Compatible with Node.js, Express, and PostgreSQL/MySQL/SQLite
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------
+// ENUMS
+// -------------------------------------------------------------
+
+enum RolUsuario {
+  PACIENTE
+  MEDICO
+  ADMIN
+}
+
+enum EstadoCita {
+  PENDIENTE
+  CONFIRMADA
+  ATENDIDA
+  CANCELADA
+}
+
+enum TipoAlerta {
+  CITA_CONFIRMADA
+  CITA_REPROGRAMADA
+  CITA_CANCELADA
+  RECORDATORIO
+  AVISO_CLINICO
+  SISTEMA
+}
+
+enum NivelUrgencia {
+  ALTA
+  MEDIA
+  BAJA
+}
+
+// -------------------------------------------------------------
+// ENTIDAD: Usuario
+// -------------------------------------------------------------
+model Usuario {
+  id              String      @id @default(uuid())
+  correo          String      @unique
+  contrasenaHash  String      // Credencial protegida / hash (bcrypt/argon2)
+  rol             RolUsuario  @default(PACIENTE)
+  activo          Boolean     @default(true)
+  avatarUrl       String?
+  ultimoAcceso    DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relaciones
+  paciente        Paciente?
+  medico          Medico?
+  alertas         Alerta[]
+
+  @@index([correo])
+  @@index([rol])
+  @@map("usuarios")
+}
+
+// -------------------------------------------------------------
+// ENTIDAD: Paciente
+// -------------------------------------------------------------
+model Paciente {
+  id               String       @id @default(uuid())
+  usuarioId        String       @unique
+  nombres          String
+  apellidos        String
+  dni              String       @unique
+  telefono         String
+  fechaNacimiento  DateTime?
+  genero           String?
+  seguroEps        String?      // e.g. "EPS Sura - Plan Integral"
+  planSalud        String?      // e.g. "Cobertura 80%"
+  numeroAfiliacion String?
+  direccion        String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // Relaciones
+  usuario          Usuario      @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  citas            Cita[]
+
+  @@index([dni])
+  @@index([usuarioId])
+  @@map("pacientes")
+}
+
+// -------------------------------------------------------------
+// ENTIDAD: Especialidad
+// -------------------------------------------------------------
+model Especialidad {
+  id                  String    @id @default(uuid())
+  nombre              String    @unique
+  descripcion         String
+  icono               String?   // Icon identifier (e.g. HeartPulse, Baby)
+  color               String?   // Theme color identifier
+  precioBase          Decimal   @default(100.00) @db.Decimal(10, 2)
+  sintomasFrecuentes  String[]  // Array de síntomas asociados
+  activa              Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Relaciones
+  medicos             Medico[]
+  citas               Cita[]
+
+  @@index([nombre])
+  @@map("especialidades")
+}
+
+// -------------------------------------------------------------
+// ENTIDAD: Médico
+// -------------------------------------------------------------
+model Medico {
+  id                     String        @id @default(uuid())
+  usuarioId              String?       @unique
+  nombres                String
+  apellidos              String
+  especialidadId         String
+  colegiatura            String        // CMP / COP
+  rne                    String?       // Registro Nacional de Especialista
+  experiencia            String        // e.g. "14 años"
+  calificacion           Decimal       @default(5.0) @db.Decimal(2, 1)
+  opinionesCount         Int           @default(0)
+  sede                   String        // e.g. "Torre Médica Central"
+  consultorio            String        // e.g. "Cons. 402 - Piso 4"
+  fotoUrl                String?
+  bio                    String        // Información profesional
+  diasAtencion           String[]      // e.g. ["Lunes", "Martes", "Jueves"]
+  disponibilidad         Json          // Matriz de días y slots horarios disponibles
+  precioConsulta         Decimal       @default(120.00) @db.Decimal(10, 2)
+  activo                 Boolean       @default(true)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  // Relaciones
+  usuario                Usuario?      @relation(fields: [usuarioId], references: [id], onDelete: SetNull)
+  especialidad           Especialidad  @relation(fields: [especialidadId], references: [id], onDelete: Restrict)
+  citas                  Cita[]
+
+  @@index([especialidadId])
+  @@index([colegiatura])
+  @@map("medicos")
+}
+
+// -------------------------------------------------------------
+// ENTIDAD: Cita
+// -------------------------------------------------------------
+model Cita {
+  id                   String        @id @default(uuid())
+  codigo               String        @unique // e.g. "#MED-84920"
+  pacienteId           String
+  medicoId             String
+  especialidadId       String
+  fecha                String        // Formato ISO YYYY-MM-DD
+  hora                 String        // Formato HH:mm (e.g. "09:30 AM")
+  motivo               String
+  estado               EstadoCita    @default(CONFIRMADA)
+  sintomasPrevios      String[]      // Lista de síntomas reportados
+  costoTotal           Decimal       @default(0.00) @db.Decimal(10, 2)
+  coberturaEps         Decimal       @default(0.00) @db.Decimal(10, 2)
+  copago               Decimal       @default(0.00) @db.Decimal(10, 2)
+  motivoCancelacion    String?
+  notasMedicas         String?       // Observaciones clínicas del médico
+  recetaMedica         String?       // Prescripción o indicaciones
+  indicacionesPrevias  String[]      // Instrucciones previas a la cita
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  // Relaciones
+  paciente             Paciente      @relation(fields: [pacienteId], references: [id], onDelete: Restrict)
+  medico               Medico        @relation(fields: [medicoId], references: [id], onDelete: Restrict)
+  especialidad         Especialidad  @relation(fields: [especialidadId], references: [id], onDelete: Restrict)
+
+  @@index([pacienteId])
+  @@index([medicoId])
+  @@index([especialidadId])
+  @@index([fecha])
+  @@index([estado])
+  @@map("citas")
+}
+
+// -------------------------------------------------------------
+// ENTIDAD: Alerta
+// -------------------------------------------------------------
+model Alerta {
+  id         String         @id @default(uuid())
+  usuarioId  String
+  mensaje    String
+  titulo     String?
+  tipo       TipoAlerta     @default(AVISO_CLINICO)
+  urgencia   NivelUrgencia  @default(BAJA)
+  fecha      DateTime       @default(now())
+  leida      Boolean        @default(false)
+  citaId     String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  // Relaciones
+  usuario    Usuario        @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@index([leida])
+  @@index([fecha])
+  @@map("alertas")
+}

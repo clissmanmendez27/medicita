@@ -1,0 +1,6 @@
+{
+  "name": "MediCita",
+  "description": "Sistema Inteligente de Gestión de Citas Médicas con Asistente Automatizado para búsqueda de especialidades, consulta de horarios y gestión de reservas",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
